@@ -7,7 +7,7 @@ use crate::{
     chip::PiChip,
     config::K_BIT_PLANES,
     gpio_bits,
-    pin_pulser::PinPulser,
+    pin_pulser::{HardwarePinPulser, PinPulser, TimerBasedPinPulser},
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
     row_address_setter::RowAddressSetter,
     utils::linux_has_module_loaded,
@@ -45,7 +45,7 @@ pub(crate) struct Gpio {
     gpio_registers: GPIORegisters,
     time_registers: TimeRegisters,
     pwm_registers: PWMRegisters,
-    pin_pulser: PinPulser,
+    pin_pulser: Box<dyn PinPulser>,
     input_bits: u32,
     output_bits: u32,
     reserved_bits: u32,
@@ -122,13 +122,19 @@ impl Gpio {
             };
         });
 
-        let pin_pulser = PinPulser::new(
-            config.hardware_mapping.output_enable,
-            &bitplane_timings,
-            &mut pwm_registers,
-            &mut gpio_registers,
-            &mut clk_registers,
-        );
+        let pin_pulser = if config.hardware_mapping.output_enable == gpio_bits!(18) || config.hardware_mapping.output_enable == gpio_bits!(12) {
+            Box::new(HardwarePinPulser::new(
+                config.hardware_mapping.output_enable,
+                &bitplane_timings,
+                &mut pwm_registers,
+                &mut gpio_registers,
+                &mut clk_registers,
+            )) as Box<dyn PinPulser>
+        } else {
+            Box::new(TimerBasedPinPulser::new(
+                &bitplane_timings,
+            )) as Box<dyn PinPulser>
+        };
 
         let gpio_slowdown = config.slowdown.unwrap_or_else(|| chip.gpio_slowdown());
 

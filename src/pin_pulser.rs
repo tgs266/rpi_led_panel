@@ -1,6 +1,7 @@
+use std::{thread::sleep, time::Duration};
+
 use crate::{
-    gpio_bits,
-    registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
+    gpio_bits, registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters}
 };
 
 const PWM_BASE_TIME_NS: u32 = 2;
@@ -10,7 +11,21 @@ struct Pulse {
     sleep_hint_us: u32,
 }
 
-pub(crate) struct PinPulser {
+pub(crate) trait PinPulser {
+    fn send_pulse(
+        &mut self, 
+        bitplane: usize,
+        pwm_registers: &mut PWMRegisters,
+        time_registers: &mut TimeRegisters
+    );
+    fn wait_pulse_finished(
+        &mut self,
+        time_registers: &mut TimeRegisters,
+        pwm_registers: &mut PWMRegisters,
+    );
+}
+
+pub(crate) struct HardwarePinPulser {
     /// Hints how long to sleep.
     sleep_hints_us: Vec<u32>,
     /// Pulse period for each bit plane.
@@ -19,7 +34,38 @@ pub(crate) struct PinPulser {
     current_pulse: Option<Pulse>,
 }
 
-impl PinPulser {
+pub(crate) struct TimerBasedPinPulser {
+    sleep_hints_us: Vec<u32>,
+}
+
+impl TimerBasedPinPulser {
+    pub fn new(bitplane_timings_ns: &[u32]) -> Self {
+        let sleep_hints_us = bitplane_timings_ns.iter().map(|t| t / 1000).collect();
+        TimerBasedPinPulser { sleep_hints_us }
+    }
+}
+
+impl PinPulser for TimerBasedPinPulser {
+    fn send_pulse(
+        &mut self, 
+        bitplane: usize,
+        pwm_registers: &mut PWMRegisters,
+        time_registers: &mut TimeRegisters
+    ) {
+        sleep(Duration::from_micros(self.sleep_hints_us[bitplane] as u64));
+    }
+
+    fn wait_pulse_finished(
+        &mut self,
+        time_registers: &mut TimeRegisters,
+        pwm_registers: &mut PWMRegisters,
+    ) {
+        
+    }
+}
+
+
+impl HardwarePinPulser {
     pub(crate) fn new(
         pins: u32,
         bitplane_timings_ns: &[u32],
@@ -54,8 +100,10 @@ impl PinPulser {
             current_pulse: None,
         }
     }
+}
 
-    pub(crate) fn send_pulse(
+impl PinPulser for HardwarePinPulser {
+    fn send_pulse(
         &mut self,
         bitplane: usize,
         pwm_registers: &mut PWMRegisters,
@@ -92,7 +140,7 @@ impl PinPulser {
         pwm_registers.enable_pwm();
     }
 
-    pub(crate) fn wait_pulse_finished(
+    fn wait_pulse_finished(
         &mut self,
         time_registers: &mut TimeRegisters,
         pwm_registers: &mut PWMRegisters,
