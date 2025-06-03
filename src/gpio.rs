@@ -133,7 +133,8 @@ impl Gpio {
         } else {
             Box::new(TimerBasedPinPulser::new(
                 &bitplane_timings,
-            )) as Box<dyn PinPulser>
+                config.hardware_mapping.output_enable,
+            ))
         };
 
         let gpio_slowdown = config.slowdown.unwrap_or_else(|| chip.gpio_slowdown());
@@ -178,9 +179,10 @@ impl Gpio {
             time_registers,
             pwm_registers,
             pin_pulser,
+            gpio_registers,
             ..
         } = self;
-        pin_pulser.send_pulse(bitplane, pwm_registers, time_registers);
+        pin_pulser.send_pulse(bitplane, gpio_registers, pwm_registers, time_registers);
     }
 
     pub(crate) fn wait_pulse_finished(&mut self) {
