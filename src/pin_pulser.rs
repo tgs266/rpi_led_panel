@@ -41,66 +41,28 @@ pub(crate) struct TimerBasedPinPulser {
 impl TimerBasedPinPulser {
     pub fn new(bitplane_timings_ns: &[u32]) -> Self {
         let sleep_hints_us = bitplane_timings_ns.iter().map(|t| t / 1000).collect();
-        Self { sleep_hints_us }
-    }
-
-    fn sleep_nanos(&self, nanos: u64, time_registers: &mut TimeRegisters) {
-        const JITTER_ALLOWANCE_US: u64 = 15;
-        const MIN_NANOSLEEP_US: u64 = 5;
-        const MIN_NANOSLEEP_NS: u64 = MIN_NANOSLEEP_US * 1_000;
-
-        let jitter_ns = JITTER_ALLOWANCE_US * 1000;
-
-        if nanos > jitter_ns + MIN_NANOSLEEP_NS {
-            let start = time_registers.get_time();
-
-            let nanosleep_ns = nanos - jitter_ns;
-            let sleep_time = Duration::from_nanos(nanosleep_ns);
-            std::thread::sleep(sleep_time);
-
-            let elapsed_us = time_registers.get_time() - start;
-            let elapsed_ns = elapsed_us * 1000;
-            let remaining_ns = nanos.saturating_sub(elapsed_ns);
-
-            Self::busy_wait(remaining_ns);
-        } else {
-            Self::busy_wait(nanos);
-        }
-    }
-
-    fn busy_wait(nanos: u64) {
-        // Calibrated from Zeller's values for Pi3/4.
-        if nanos < 20 {
-            return;
-        }
-
-        let loops = ((nanos - 15) * 100) / 73;
-        for _ in 0..loops {
-            core::hint::spin_loop();
-        }
+        TimerBasedPinPulser { sleep_hints_us }
     }
 }
 
 impl PinPulser for TimerBasedPinPulser {
     fn send_pulse(
-        &mut self,
+        &mut self, 
         bitplane: usize,
-        _pwm_registers: &mut crate::registers::PWMRegisters,
-        time_registers: &mut crate::registers::TimeRegisters,
+        pwm_registers: &mut PWMRegisters,
+        time_registers: &mut TimeRegisters
     ) {
-        let nanos = self.sleep_hints_us[bitplane] as u64 * 1000;
-        self.sleep_nanos(nanos, time_registers);
+        sleep(Duration::from_micros(self.sleep_hints_us[bitplane] as u64));
     }
 
     fn wait_pulse_finished(
         &mut self,
-        _time_registers: &mut crate::registers::TimeRegisters,
-        _pwm_registers: &mut crate::registers::PWMRegisters,
+        time_registers: &mut TimeRegisters,
+        pwm_registers: &mut PWMRegisters,
     ) {
-        // No-op for software pulser.
+        
     }
 }
-
 
 
 impl HardwarePinPulser {
@@ -139,7 +101,6 @@ impl HardwarePinPulser {
         }
     }
 }
-
 
 impl PinPulser for HardwarePinPulser {
     fn send_pulse(
